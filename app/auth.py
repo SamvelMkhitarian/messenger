@@ -2,9 +2,9 @@ import os
 from datetime import datetime, timedelta
 from typing import Optional
 
-from database import get_db
+from database import get_db_session
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from models import User
 from passlib.context import CryptContext
@@ -17,7 +17,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 120
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+oauth2_scheme = HTTPBearer()
 
 
 def verify_password(plain_password, hashed_password):
@@ -39,15 +39,28 @@ async def authenticate_user(email: str, password: str, db: AsyncSession):
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.utcnow() + expires_delta  # TODO изменить метод на актуальный
     else:
+        # TODO изменить метод на актуальный
         expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
 
-async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)):
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db_session)
+):
+    """
+    Получить текущего авторизованного пользователя по JWT токену
+
+    :param credentials: заголовок Authorization с Bearer токеном
+    :param db: сессия базы данных
+    :return: объект пользователя
+    """
+    token = credentials.credentials
+
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",

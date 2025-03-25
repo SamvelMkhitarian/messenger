@@ -49,6 +49,7 @@ class Message(Base):
     timestamp = Column(DateTime(timezone=True),
                        server_default=func.now(), nullable=False)
     is_read = Column(Boolean, default=False)
+    client_id = Column(String, unique=True, nullable=True)
 
     chat = relationship("Chat")
     sender = relationship("User", back_populates="sent_messages")

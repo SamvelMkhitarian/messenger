@@ -2,11 +2,11 @@ from typing import List
 
 from auth import (authenticate_user, create_access_token, get_current_user,
                   get_password_hash)
-from database import get_db
+from database import get_db_session
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from fastapi.security import OAuth2PasswordRequestForm
 from models import Chat, Group, Message, User, group_members
-from schemas import (ChatCreate, ChatRead, MessageReadSchema, Token,
+from schemas import (ChatCreate, MessageReadSchema, Token,
                      UserCreate, UserRead)
 from sqlalchemy import and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +16,7 @@ router = APIRouter()
 
 
 @router.post("/register", response_model=UserRead)
-async def register_user(user_data: UserCreate = Query(), db: AsyncSession = Depends(get_db)) -> UserRead:
+async def register_user(user_data: UserCreate = Query(), db: AsyncSession = Depends(get_db_session)) -> UserRead:
     """
     Зарегистрировать нового пользователя
 
@@ -43,7 +43,7 @@ async def register_user(user_data: UserCreate = Query(), db: AsyncSession = Depe
 
 
 @router.post("/login", response_model=Token)
-async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)) -> Token:
+async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db_session)) -> Token:
     """
     Авторизовать пользователя и выдать JWT токен
 
@@ -66,35 +66,42 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
 # Создание чата
 
 
-@router.post("/chats", response_model=ChatRead)
+@router.post("/chats")
 async def create_chat(
     chat_data: ChatCreate,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_session),
     current_user: User = Depends(get_current_user)
-) -> ChatRead:
+):
     """
     Создать новый чат (личный или групповой)
 
     :param chat_data: данные чата (название, тип)
     :param db: сессия базы данных
-    :param current_user: текущий авторизованный пользователь
-    :return: объект созданного чата
+    :param current_user: текущий пользователь
+    :return: данные созданного чата + group_id (если это групповой чат)
     """
     new_chat = Chat(name=chat_data.name, type=chat_data.type)
     db.add(new_chat)
     await db.commit()
     await db.refresh(new_chat)
-    # Если это групповой чат — создаём Group и добавляем создателя
+
+    response = {
+        "chat_id": new_chat.id,
+        "name": new_chat.name,
+        "type": new_chat.type,
+    }
+
     if chat_data.type == "group":
         new_group = Group(name=chat_data.name, creator_id=current_user.id)
         db.add(new_group)
         await db.commit()
         await db.refresh(new_group)
-        # Добавляем создателя в участники
         await db.execute(group_members.insert().values(group_id=new_group.id, user_id=current_user.id))
         await db.commit()
+        response["group_id"] = new_group.id
 
-    return new_chat
+    return response
+
 
 # Подключить пользователя к группе (добавить в group_members)
 
@@ -102,7 +109,7 @@ async def create_chat(
 @router.post("/groups/{group_id}/join")
 async def join_group(
     group_id: int,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_session),
     current_user: User = Depends(get_current_user)
 ) -> dict:
     """
@@ -141,7 +148,7 @@ async def get_history(
     limit: int = Query(
         default=50, ge=1, description='максимальное количество сообщений'),
     offset: int = Query(default=0, ge=0, description='смещение для пагинации'),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_session),
     current_user: User = Depends(get_current_user)
 ) -> List[MessageReadSchema]:
     """
@@ -173,7 +180,7 @@ async def get_history(
 
 
 @router.post("/seed_data")
-async def seed_data(db: AsyncSession = Depends(get_db)) -> dict:
+async def seed_data(db: AsyncSession = Depends(get_db_session)) -> dict:
     """
     Создать тестовые данные (пользователи и чат)
 
