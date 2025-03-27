@@ -1,22 +1,27 @@
 from typing import List
 
-from auth import (authenticate_user, create_access_token, get_current_user,
-                  get_password_hash)
+from auth import get_current_user
 from database import get_db_session
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, Form, Path, Query, status
 from fastapi.security import OAuth2PasswordRequestForm
-from models import Chat, Group, Message, User, group_members
-from schemas import (ChatCreate, MessageReadSchema, Token,
-                     UserCreate, UserRead)
-from sqlalchemy import and_
+from models import User
+from schemas import ChatCreate, MessageWithSender, Token, UserRead
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
+
+from queries import (create_chat_query, create_seed_data_query,
+                     get_history_query, get_user_chats_query,
+                     join_group_query, login_query, register_user_query)
 
 router = APIRouter()
 
 
 @router.post("/register", response_model=UserRead)
-async def register_user(user_data: UserCreate = Query(), db: AsyncSession = Depends(get_db_session)) -> UserRead:
+async def register_user(
+    name: str = Form(...),
+    email: str = Form(...),
+    password: str = Form(...),
+    db: AsyncSession = Depends(get_db_session)
+) -> UserRead:
     """
     Зарегистрировать нового пользователя
 
@@ -24,25 +29,10 @@ async def register_user(user_data: UserCreate = Query(), db: AsyncSession = Depe
     :param db: сессия базы данных
     :return: объект созданного пользователя
     """
-    # Проверка на дубликат email
-    existing_user = (await db.execute(select(User).where(User.email == user_data.email))).scalar_one_or_none()
-    if existing_user:
-        raise HTTPException(
-            status_code=400, detail='Email уже зарегистрирован')
-    new_user = User(
-        name=user_data.name,
-        email=user_data.email,
-        password_hash=get_password_hash(user_data.password)
-    )
-    db.add(new_user)
-    await db.commit()
-    await db.refresh(new_user)
-    return new_user
-
-# Логин и получение JWT
+    return await register_user_query(name, email, password, db)
 
 
-@router.post("/login", response_model=Token)
+@router.post("/login", response_model=Token, status_code=status.HTTP_200_OK)
 async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db_session)) -> Token:
     """
     Авторизовать пользователя и выдать JWT токен
@@ -51,22 +41,10 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
     :param db: сессия базы данных
     :return: JWT токен и тип токена
     """
-    user = await authenticate_user(form_data.username, form_data.password, db)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    access_token = create_access_token(
-        data={"sub": str(user.id)},
-    )
-    return {"access_token": access_token, "token_type": "bearer"}
-
-# Создание чата
+    return await login_query(form_data, db)
 
 
-@router.post("/chats")
+@router.post("/create_chats", status_code=status.HTTP_200_OK)
 async def create_chat(
     chat_data: ChatCreate,
     db: AsyncSession = Depends(get_db_session),
@@ -80,33 +58,25 @@ async def create_chat(
     :param current_user: текущий пользователь
     :return: данные созданного чата + group_id (если это групповой чат)
     """
-    new_chat = Chat(name=chat_data.name, type=chat_data.type)
-    db.add(new_chat)
-    await db.commit()
-    await db.refresh(new_chat)
-
-    response = {
-        "chat_id": new_chat.id,
-        "name": new_chat.name,
-        "type": new_chat.type,
-    }
-
-    if chat_data.type == "group":
-        new_group = Group(name=chat_data.name, creator_id=current_user.id)
-        db.add(new_group)
-        await db.commit()
-        await db.refresh(new_group)
-        await db.execute(group_members.insert().values(group_id=new_group.id, user_id=current_user.id))
-        await db.commit()
-        response["group_id"] = new_group.id
-
-    return response
+    return await create_chat_query(chat_data, db, current_user)
 
 
-# Подключить пользователя к группе (добавить в group_members)
+@router.get("/get_chats", status_code=status.HTTP_200_OK)
+async def get_user_chats(
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Получить список чатов, в которых участвует текущий пользователь.
+
+    :param db: сессия базы данных
+    :param current_user: текущий авторизованный пользователь
+    :return: список чатов
+    """
+    return await get_user_chats_query(db, current_user)
 
 
-@router.post("/groups/{group_id}/join")
+@router.post("/groups/{group_id}/join", status_code=status.HTTP_200_OK)
 async def join_group(
     group_id: int,
     db: AsyncSession = Depends(get_db_session),
@@ -120,87 +90,33 @@ async def join_group(
     :param current_user: текущий авторизованный пользователь
     :return: результат добавления в группу
     """
-    # Проверим, существует ли группа
-    group_obj = (await db.execute(select(Group).where(Group.id == group_id))).scalar_one_or_none()
-    if not group_obj:
-        raise HTTPException(status_code=404, detail="Group not found")
-    # Проверим, не в группе ли уже
-    res = await db.execute(
-        select(group_members).where(
-            and_(group_members.c.group_id == group_id,
-                 group_members.c.user_id == current_user.id)
-        )
-    )
-    if res.first():
-        return {"detail": "Already in group"}
-
-    await db.execute(group_members.insert().values(group_id=group_id, user_id=current_user.id))
-    await db.commit()
-    return {"detail": f"User {current_user.id} joined group {group_id}"}
+    return await join_group_query(group_id, db, current_user)
 
 
-# История сообщений
-
-
-@router.get("/history/{chat_id}", response_model=List[MessageReadSchema])
+@router.get("/history/{chat_id}", response_model=List[MessageWithSender], status_code=status.HTTP_200_OK)
 async def get_history(
     chat_id: int = Path(..., description='ID чата'),
-    limit: int = Query(
-        default=50, ge=1, description='максимальное количество сообщений'),
-    offset: int = Query(default=0, ge=0, description='смещение для пагинации'),
+    limit: int = Query(default=50, ge=1),
+    offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db_session),
-    current_user: User = Depends(get_current_user)
-) -> List[MessageReadSchema]:
+) -> List[MessageWithSender]:
     """
-    Получить историю сообщений в чате
+    Получить историю сообщений в заданном чате.
 
     :param chat_id: идентификатор чата
     :param limit: максимальное количество сообщений
-    :param offset: смещение для пагинации
+    :param offset: смещение (для пагинации)
     :param db: сессия базы данных
-    :param current_user: текущий авторизованный пользователь
-    :return: список сообщений
+    :return: список сообщений (MessageWithSender)
     """
-    # Проверяем существование чата
-    chat_obj = (await db.execute(select(Chat).where(Chat.id == chat_id))).scalar_one_or_none()
-    if not chat_obj:
-        raise HTTPException(status_code=404, detail="Chat not found")
-
-    result = await db.execute(
-        select(Message)
-        .where(Message.chat_id == chat_id)
-        .order_by(Message.timestamp.asc())
-        .offset(offset)
-        .limit(limit)
-    )
-    messages = result.scalars().all()
-    return messages
-
-# Эндпоинт для наполнения тестовыми данными (по желанию)
+    return await get_history_query(chat_id, limit, offset, db)
 
 
-@router.post("/seed_data")
-async def seed_data(db: AsyncSession = Depends(get_db_session)) -> dict:
+@router.post("/seed_data", status_code=status.HTTP_204_NO_CONTENT)
+async def seed_data(db: AsyncSession = Depends(get_db_session)) -> None:
     """
     Создать тестовые данные (пользователи и чат)
 
     :param db: сессия базы данных
-    :return: результат создания данных
     """
-    # Создадим пару пользователей
-    u1 = User(name="Alice", email="alice@example.com",
-              password_hash=get_password_hash("password"))
-    u2 = User(name="Bob", email="bob@example.com",
-              password_hash=get_password_hash("password"))
-    db.add_all([u1, u2])
-    await db.commit()
-    await db.refresh(u1)
-    await db.refresh(u2)
-
-    # Создадим личный чат для Alice и Bob
-    chat = Chat(name="Alice&Bob", type="personal")
-    db.add(chat)
-    await db.commit()
-    await db.refresh(chat)
-
-    return {"detail": "Test data created"}
+    return await create_seed_data_query(db)

@@ -1,12 +1,14 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
-from jose import JWTError, jwt
-from typing import Dict, List, Optional
-from sqlalchemy.future import select
-from sqlalchemy.ext.asyncio import AsyncSession
+import json
+from typing import Dict, List
 
-from database import get_db
-from models import Chat, Group, Message, MessageRead, group_members
-from settings import SECRET_KEY, ALGORITHM
+from auth import get_current_user_ws
+from database import get_db_session
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from models import Message, User
+from schemas import MessageWithSender
+from sqlalchemy import join
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 
 ws_router = APIRouter()
 
@@ -14,124 +16,94 @@ active_connections: Dict[int, List[WebSocket]] = {}
 
 
 @ws_router.websocket("/ws/chat/{chat_id}")
-async def websocket_endpoint(websocket: WebSocket, chat_id: int, token: Optional[str] = None):
+async def websocket_endpoint(websocket: WebSocket, chat_id: int, token: str):
     """
-    Подключение к чату по WebSocket с авторизацией через JWT (token в query).
-    Обрабатывает отправку и чтение сообщений в реальном времени.
+    WebSocket соединение для чата: при подключении отправляет последние сообщения,
+    затем принимает и рассылает новые.
     """
-    if not token:
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return
-
+    db_gen = get_db_session()
+    db: AsyncSession = await anext(db_gen)
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id = int(payload.get("sub"))
-    except (JWTError, ValueError):
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return
+        user = await get_current_user_ws(token, db)
+        if user is None:
+            await websocket.close(code=1008)
+            return
 
-    await websocket.accept()
+        await websocket.accept()
+        active_connections.setdefault(chat_id, set()).add(websocket)
 
-    if chat_id not in active_connections:
-        active_connections[chat_id] = []
-    active_connections[chat_id].append(websocket)
+        # Получение последних сообщений с именем отправителя (без MessageView)
+        result = await db.execute(
+            select(
+                Message.id,
+                Message.chat_id,
+                Message.sender_id,
+                User.name.label("sender_name"),
+                Message.text,
+                Message.timestamp,
+                Message.is_read,
+            )
+            .select_from(join(Message, User, Message.sender_id == User.id))
+            .where(Message.chat_id == chat_id)
+            .order_by(Message.timestamp.asc())
+            .limit(50)
+        )
+        messages = [
+            MessageWithSender(
+                id=row.id,
+                chat_id=row.chat_id,
+                sender_id=row.sender_id,
+                sender_name=row.sender_name,
+                text=row.text,
+                timestamp=row.timestamp,
+                is_read=row.is_read,
+            )
+            for row in result
+        ]
+        await websocket.send_text(json.dumps([msg.model_dump() for msg in messages], default=str))
 
-    async with get_db() as db:
-        try:
-            while True:
-                data = await websocket.receive_json()
-                action = data.get("action")
+        # Получение новых сообщений
+        while True:
+            data = await websocket.receive_json()
+            text = data.get("text")
+            client_id = data.get("client_id")
 
-                if action == "send_message":
-                    text = data.get("text", "")
-                    client_id = data.get("client_id")
+            if not text or not client_id:
+                continue
 
-                    # Проверка дубликата по client_id
-                    if client_id:
-                        existing = await db.execute(
-                            select(Message).where(
-                                Message.client_id == client_id)
-                        )
-                        if existing.scalar_one_or_none():
-                            continue  # сообщение уже есть — не сохраняем
+            # Предотвращение дублирования
+            existing = await db.execute(
+                select(Message).where(Message.client_id == client_id)
+            )
+            if existing.scalar_one_or_none():
+                continue
 
-                    msg = Message(
-                        chat_id=chat_id,
-                        sender_id=user_id,
-                        text=text,
-                        client_id=client_id
-                    )
-                    db.add(msg)
-                    await db.commit()
-                    await db.refresh(msg)
+            new_msg = Message(
+                chat_id=chat_id,
+                sender_id=user.id,
+                text=text,
+                client_id=client_id,
+            )
+            db.add(new_msg)
+            await db.commit()
+            await db.refresh(new_msg)
 
-                    for conn in active_connections[chat_id]:
-                        await conn.send_json({
-                            "type": "new_message",
-                            "message": {
-                                "id": msg.id,
-                                "chat_id": chat_id,
-                                "sender_id": user_id,
-                                "text": msg.text,
-                                "timestamp": str(msg.timestamp),
-                                "is_read": msg.is_read
-                            }
-                        })
+            # Добавляем sender_name вручную
+            response_data = MessageWithSender(
+                id=new_msg.id,
+                chat_id=new_msg.chat_id,
+                sender_id=new_msg.sender_id,
+                sender_name=user.name,
+                text=new_msg.text,
+                timestamp=new_msg.timestamp,
+                is_read=new_msg.is_read,
+            ).model_dump()
 
-                elif action == "read_message":
-                    msg_id = data.get("msg_id")
-                    result = await db.execute(select(Message).where(Message.id == msg_id))
-                    message_obj = result.scalar_one_or_none()
-                    if not message_obj:
-                        continue
+            # Рассылка всем участникам
+            for conn in active_connections.get(chat_id, set()):
+                await conn.send_text(json.dumps(response_data, default=str))
 
-                    db.add(MessageRead(message_id=message_obj.id, user_id=user_id))
-                    await db.commit()
-
-                    result = await db.execute(select(Chat).where(Chat.id == chat_id))
-                    chat_obj = result.scalar_one_or_none()
-
-                    if chat_obj.type == "personal":
-                        message_obj.is_read = True
-                        await db.commit()
-                        for conn in active_connections[chat_id]:
-                            await conn.send_json({
-                                "type": "read_receipt",
-                                "message_id": msg_id,
-                                "by_user": user_id,
-                                "all_read": True
-                            })
-                    else:
-                        group_result = await db.execute(
-                            select(Group).where(Group.name == chat_obj.name)
-                        )
-                        group_obj = group_result.scalar_one_or_none()
-                        members_result = await db.execute(
-                            select(group_members.c.user_id).where(
-                                group_members.c.group_id == group_obj.id)
-                        )
-                        all_user_ids = [row[0]
-                                        for row in members_result.fetchall()]
-                        reads_result = await db.execute(
-                            select(MessageRead).where(
-                                MessageRead.message_id == msg_id)
-                        )
-                        read_user_ids = [
-                            r.user_id for r in reads_result.scalars().all()]
-                        all_read = all(
-                            uid in read_user_ids for uid in all_user_ids)
-
-                        if all_read:
-                            message_obj.is_read = True
-                            await db.commit()
-
-                        for conn in active_connections[chat_id]:
-                            await conn.send_json({
-                                "type": "read_receipt",
-                                "message_id": msg_id,
-                                "by_user": user_id,
-                                "all_read": all_read
-                            })
-
-        except WebSocketDisconnect:
-            active_connections[chat_id].remove(websocket)
+    except WebSocketDisconnect:
+        active_connections.get(chat_id, set()).discard(websocket)
+    finally:
+        await db_gen.aclose()

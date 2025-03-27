@@ -2,12 +2,12 @@ import os
 from datetime import datetime, timedelta
 from typing import Optional
 
+import bcrypt
 from database import get_db_session
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from models import User
-from passlib.context import CryptContext
 from schemas import TokenData
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -15,17 +15,15 @@ from sqlalchemy.future import select
 SECRET_KEY = os.getenv("SECRET_KEY", "SECRET_KEY_FOR_DEMO")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 120
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = HTTPBearer()
 
 
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
+def get_password_hash(password: str) -> str:
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 
-def get_password_hash(password):
-    return pwd_context.hash(password)
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
 
 
 async def authenticate_user(email: str, password: str, db: AsyncSession):
@@ -80,3 +78,15 @@ async def get_current_user(
     if user is None:
         raise credentials_exception
     return user
+
+
+async def get_current_user_ws(token: str, db: AsyncSession) -> Optional[User]:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("sub")
+        if user_id is None:
+            return None
+        result = await db.execute(select(User).where(User.id == int(user_id)))
+        return result.scalar_one_or_none()
+    except JWTError:
+        return None

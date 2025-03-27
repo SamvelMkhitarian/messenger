@@ -6,14 +6,17 @@ readme = "README.md"
 requires-python = ">=3.12.3"
 dependencies = [
     "alembic>=1.15.1",
+    "asgi-lifespan>=2.1.0",
     "asyncpg>=0.30.0",
+    "bcrypt>=4.3.0",
     "fastapi>=0.115.12",
     "httpx>=0.28.1",
     "isort>=6.0.1",
-    "passlib>=1.7.4",
     "psycopg2-binary>=2.9.10",
     "pyjwt>=2.10.1",
     "pytest>=8.3.5",
+    "pytest-asyncio>=0.26.0",
+    "pytest-cov>=6.0.0",
     "python-dotenv>=1.1.0",
     "python-jose>=3.4.0",
     "python-multipart>=0.0.20",
@@ -21,3 +24,9 @@ dependencies = [
     "uvicorn>=0.34.0",
     "websockets>=15.0.1",
 ]
+
+[tool.pytest.ini_options]
+addopts = "--cov=app --cov-report=term-missing"
+pythonpath = ["."]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"

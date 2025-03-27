@@ -1,9 +1,10 @@
 from contextlib import asynccontextmanager
 
 import uvicorn
-from database import Base, engine
+from database import engine
 from endpoints import router
 from fastapi import FastAPI
+from models import Base
 from ws_endpoints import ws_router
 
 

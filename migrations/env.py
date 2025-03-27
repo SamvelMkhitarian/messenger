@@ -1,17 +1,17 @@
-import sys
 import os
+import sys
 
 # Сначала добавляем корень проекта
 sys.path.append(os.path.abspath(
     os.path.join(os.path.dirname(__file__), '../app')))
 
-from app.models import Base  # noqa
 from logging.config import fileConfig  # noqa
 
+from alembic import context  # noqa
 from sqlalchemy import engine_from_config  # noqa
 from sqlalchemy import pool  # noqa
 
-from alembic import context  # noqa
+from app.models import Base  # noqa
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
