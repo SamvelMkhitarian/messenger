@@ -18,8 +18,17 @@ active_connections: Dict[int, List[WebSocket]] = {}
 @ws_router.websocket("/ws/chat/{chat_id}")
 async def websocket_endpoint(websocket: WebSocket, chat_id: int, token: str):
     """
-    WebSocket соединение для чата: при подключении отправляет последние сообщения,
-    затем принимает и рассылает новые.
+    WebSocket-обработчик для чата по chat_id
+
+    - Аутентифицирует пользователя по JWT токену
+    - При подключении отправляет 50 последних сообщений в чате
+    - Принимает новые сообщения от клиента и рассылает их всем участникам
+    - Предотвращает повторную отправку сообщений по client_id
+    - Поддерживает сохранение сообщений в базу и обновление отправителю
+
+    :param websocket: WebSocket-соединение от клиента
+    :param chat_id: ID чата
+    :param token: JWT токен пользователя, переданный как query-параметр
     """
     db_gen = get_db_session()
     db: AsyncSession = await anext(db_gen)

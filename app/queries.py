@@ -24,7 +24,6 @@ async def register_user_query(
     """
     Регистрирует нового пользователя и возвращает модель UserRead.
     """
-    # Проверка на дубликат email
     existing_user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
     if existing_user:
         raise HTTPException(
@@ -48,7 +47,7 @@ async def login_query(form_data: OAuth2PasswordRequestForm = Depends(), db: Asyn
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
+            detail="Неверный email или пароль",
             headers={"WWW-Authenticate": "Bearer"},
         )
     access_token = create_access_token(
@@ -122,7 +121,7 @@ async def join_group_query(
     # Проверим, существует ли группа
     group_obj = (await db.execute(select(Group).where(Group.id == group_id))).scalar_one_or_none()
     if not group_obj:
-        raise HTTPException(status_code=404, detail="Group not found")
+        raise HTTPException(status_code=404, detail="Группа не найдена.")
     # Проверим, не в группе ли уже
     res = await db.execute(
         select(group_members).where(
@@ -131,11 +130,11 @@ async def join_group_query(
         )
     )
     if res.first():
-        return {"detail": "Already in group"}
+        return {"detail": "Пользователь уже находится в группе."}
 
     await db.execute(group_members.insert().values(group_id=group_id, user_id=current_user.id))
     await db.commit()
-    return {"detail": f"User {current_user.id} joined group {group_id}"}
+    return {"detail": f"Пользователь {current_user.id} присоединился к группе {group_id}"}
 
 
 async def get_history_query(
@@ -150,7 +149,7 @@ async def get_history_query(
     # Проверяем существование чата
     chat_obj = (await db.execute(select(Chat).where(Chat.id == chat_id))).scalar_one_or_none()
     if not chat_obj:
-        raise HTTPException(status_code=404, detail="Chat not found")
+        raise HTTPException(status_code=404, detail="Чат не найден")
 
     result = await db.execute(
         select(Message, User.name)

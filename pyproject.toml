@@ -3,7 +3,7 @@ name = "messenger"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.12.3"
+requires-python = ">=3.11"
 dependencies = [
     "alembic>=1.15.1",
     "asgi-lifespan>=2.1.0",
@@ -13,6 +13,7 @@ dependencies = [
     "httpx>=0.28.1",
     "isort>=6.0.1",
     "psycopg2-binary>=2.9.10",
+    "pydantic[email]>=2.10.6",
     "pyjwt>=2.10.1",
     "pytest>=8.3.5",
     "pytest-asyncio>=0.26.0",
@@ -27,6 +28,6 @@ dependencies = [
 
 [tool.pytest.ini_options]
 addopts = "--cov=app --cov-report=term-missing"
-pythonpath = ["."]
+pythonpath = ["./app"]
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"

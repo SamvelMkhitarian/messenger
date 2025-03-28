@@ -5,10 +5,22 @@ from sqlalchemy.sql import func
 
 
 class Base(DeclarativeBase):
+    """
+    Базовый класс для всех моделей
+    """
     pass
 
 
 class User(Base):
+    """
+    Модель пользователя
+
+    :id: первичный ключ  
+    :name: имя пользователя  
+    :email: уникальный email  
+    :password_hash: хеш пароля  
+    :sent_messages: связь с отправленными сообщениями
+    """
     __tablename__ = "users"
     __table_args__ = {'extend_existing': True}
 
@@ -17,11 +29,17 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     password_hash = Column(String, nullable=False)
 
-    # Для удобства запросов
     sent_messages = relationship("Message", back_populates="sender")
 
 
 class Chat(Base):
+    """
+    Модель чата
+
+    :id: первичный ключ  
+    :name: имя чата  
+    :type: тип чата (personal / group)
+    """
     __tablename__ = "chats"
     __table_args__ = {'extend_existing': True}
 
@@ -31,6 +49,13 @@ class Chat(Base):
 
 
 class Group(Base):
+    """
+    Модель группы
+
+    :id: первичный ключ  
+    :name: название группы  
+    :creator_id: id пользователя-создателя
+    """
     __tablename__ = "groups"
     __table_args__ = {'extend_existing': True}
 
@@ -50,6 +75,19 @@ group_members = Table(
 
 
 class Message(Base):
+    """
+    Модель сообщения
+
+    :id: первичный ключ  
+    :chat_id: внешний ключ на чат  
+    :sender_id: внешний ключ на пользователя  
+    :text: текст сообщения  
+    :timestamp: дата и время отправки  
+    :is_read: статус прочтения  
+    :client_id: уникальный ID сообщения от клиента  
+    :chat: связь с чатом  
+    :sender: связь с отправителем
+    """
     __tablename__ = "messages"
     __table_args__ = {'extend_existing': True}
 

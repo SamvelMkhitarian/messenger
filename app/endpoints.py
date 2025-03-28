@@ -5,12 +5,12 @@ from database import get_db_session
 from fastapi import APIRouter, Depends, Form, Path, Query, status
 from fastapi.security import OAuth2PasswordRequestForm
 from models import User
+from queries import (create_chat_query, create_seed_data_query,
+                     get_history_query, get_user_chats_query, join_group_query,
+                     login_query, register_user_query)
 from schemas import ChatCreate, MessageWithSender, Token, UserRead
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from queries import (create_chat_query, create_seed_data_query,
-                     get_history_query, get_user_chats_query,
-                     join_group_query, login_query, register_user_query)
+from utils import validate_password
 
 router = APIRouter()
 
@@ -29,6 +29,7 @@ async def register_user(
     :param db: сессия базы данных
     :return: объект созданного пользователя
     """
+    validate_password(password)
     return await register_user_query(name, email, password, db)
 
 

@@ -10,11 +10,21 @@ AsyncSessionLocal = sessionmaker(
 
 
 async def get_db_session():
+    """
+    Асинхронный генератор для получения сессии базы данных
+
+    :return: объект AsyncSession в контексте
+    """
     async with AsyncSessionLocal() as session:
         yield session
 
 
 @asynccontextmanager
 async def get_db():
+    """
+    Контекстный менеджер для работы с базой данных вне Depends()
+
+    :return: объект AsyncSession в контексте
+    """
     async with AsyncSessionLocal() as session:
         yield session

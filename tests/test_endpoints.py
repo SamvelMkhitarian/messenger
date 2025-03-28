@@ -1,24 +1,22 @@
-import os
-import sys
+from uuid import uuid4
 
-sys.path.append(os.path.abspath(
-    os.path.join(os.path.dirname(__file__), '../app')))
-
-from uuid import uuid4  # noqa
-
-import pytest  # noqa
-from conftest import login_user, register_user  # noqa
-from httpx import AsyncClient  # noqa
-from sqlalchemy import select  # noqa
-
-from app.database import get_db_session  # noqa
-from app.models import Message, User  # noqa
+import pytest
+from conftest import login_user, register_user
+from database import get_db_session
+from httpx import AsyncClient
+from models import Message, User
+from sqlalchemy import select
 
 
 @pytest.mark.asyncio
 async def test_register_success(client: AsyncClient):
+    """
+    Проверяет успешную регистрацию пользователя:
+    - Отправляет POST-запрос на /register
+    - Проверяет статус 200 и наличие email и id в ответе
+    """
     email = f"test_{uuid4().hex[:8]}@example.com"
-    response = await client.post("/register", data={"name": "Тест", "email": email, "password": "123456"})
+    response = await client.post("/register", data={"name": "Тест", "email": email, "password": "Password1"})
     assert response.status_code == 200
     data = response.json()
     assert data["email"] == email
@@ -27,17 +25,28 @@ async def test_register_success(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_register_duplicate_email(client: AsyncClient):
+    """
+    Проверяет, что повторная регистрация с тем же email вызывает ошибку:
+    - Первый запрос проходит успешно
+    - Второй возвращает 400 и сообщение об ошибке
+    """
     email = f"test_{uuid4().hex[:8]}@example.com"
-    await register_user(client, "Тест", email, "123456")
-    response = await client.post("/register", data={"name": "Тест 2", "email": email, "password": "abcdef"})
+    await register_user(client, "Тест", email, "Password1")
+    response = await client.post("/register", data={"name": "Тест 2", "email": email, "password": "Password1"})
     assert response.status_code == 400
     assert response.json()["detail"] == "Email уже зарегистрирован"
 
 
 @pytest.mark.asyncio
 async def test_login_success(client: AsyncClient):
+    """
+    Проверяет успешную авторизацию:
+    - Регистрирует пользователя
+    - Выполняет вход
+    - Проверяет наличие токена и типа bearer
+    """
     email = f"test_{uuid4().hex[:8]}@example.com"
-    password = "123456"
+    password = "Password1"
     await register_user(client, "Test User", email, password)
     response = await client.post("/login", data={"username": email, "password": password})
     assert response.status_code == 200
@@ -48,8 +57,14 @@ async def test_login_success(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_create_chat_success(client: AsyncClient):
+    """
+    Проверяет создание приватного чата:
+    - Регистрирует и авторизует пользователя
+    - Отправляет POST-запрос на /create_chats
+    - Проверяет успешный статус и содержимое ответа
+    """
     email = f"test_{uuid4().hex[:8]}@example.com"
-    password = "123456"
+    password = "Password1"
     await register_user(client, "User", email, password)
     token = await login_user(client, email, password)
 
@@ -67,8 +82,14 @@ async def test_create_chat_success(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_get_user_chats_success(client: AsyncClient):
+    """
+    Проверяет получение списка чатов пользователя:
+    - Создаёт чат
+    - Запрашивает список через /get_chats
+    - Проверяет, что нужный чат присутствует в списке
+    """
     email = f"test_{uuid4().hex[:8]}@example.com"
-    password = "123456"
+    password = "Password1"
     await register_user(client, "Chat Tester", email, password)
     token = await login_user(client, email, password)
     # Создаём чат
@@ -87,8 +108,14 @@ async def test_get_user_chats_success(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_create_group_chat_success(client: AsyncClient):
+    """
+    Проверяет создание группового чата:
+    - Регистрирует пользователя
+    - Создаёт групповой чат
+    - Проверяет поля name, type, chat_id и group_id в ответе
+    """
     email = f"test_{uuid4().hex[:8]}@example.com"
-    password = "123456"
+    password = "Password1"
     await register_user(client, "Group User", email, password)
     token = await login_user(client, email, password)
 
@@ -107,9 +134,15 @@ async def test_create_group_chat_success(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_join_group_success(client: AsyncClient):
+    """
+    Проверяет успешное присоединение к группе:
+    - Один пользователь создаёт группу
+    - Второй пользователь присоединяется
+    - Проверяется успешный ответ и сообщение о вступлении
+    """
     creator_email = f"creator_{uuid4().hex[:8]}@example.com"
     joiner_email = f"joiner_{uuid4().hex[:8]}@example.com"
-    password = "123456"
+    password = "Password1"
 
     # Создатель группы
     await register_user(client, "Creator", creator_email, password)
@@ -127,13 +160,19 @@ async def test_join_group_success(client: AsyncClient):
     joiner_token = await login_user(client, joiner_email, password)
     join_response = await client.post(f"/groups/{group_id}/join", headers={"Authorization": f"Bearer {joiner_token}"})
     assert join_response.status_code == 200
-    assert f"joined group {group_id}" in join_response.json()["detail"]
+    assert f"присоединился к группе {group_id}" in join_response.json()[
+        "detail"]
 
 
 @pytest.mark.asyncio
 async def test_join_group_already_member(client: AsyncClient):
+    """
+    Проверяет повторное присоединение к одной и той же группе:
+    - Пользователь создаёт и присоединяется к группе
+    - Повторное присоединение возвращает сообщение "Already in group"
+    """
     email = f"user_{uuid4().hex[:8]}@example.com"
-    password = "123456"
+    password = "Password1"
     await register_user(client, "User", email, password)
     token = await login_user(client, email, password)
 
@@ -152,24 +191,36 @@ async def test_join_group_already_member(client: AsyncClient):
     # Второй раз — Already in group
     second_join = await client.post(f"/groups/{group_id}/join", headers={"Authorization": f"Bearer {token}"})
     assert second_join.status_code == 200
-    assert second_join.json()["detail"] == "Already in group"
+    assert second_join.json(
+    )["detail"] == "Пользователь уже находится в группе."
 
 
 @pytest.mark.asyncio
 async def test_join_nonexistent_group(client: AsyncClient):
+    """
+    Проверяет попытку вступить в несуществующую группу:
+    - Отправляется запрос на /groups/999999/join
+    - Проверяется статус 404 и сообщение об ошибке
+    """
     email = f"user_{uuid4().hex[:8]}@example.com"
-    password = "123456"
+    password = "Password1"
     await register_user(client, "User", email, password)
     token = await login_user(client, email, password)
     response = await client.post("/groups/999999/join", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 404
-    assert response.json()["detail"] == "Group not found"
+    assert response.json()["detail"] == "Группа не найдена."
 
 
 @pytest.mark.asyncio
 async def test_chat_history_success(client: AsyncClient):
+    """
+    Проверяет получение истории сообщений:
+    - Создаёт чат и вручную добавляет 3 сообщения в базу
+    - Отправляет GET-запрос на /history/{chat_id}
+    - Проверяет, что возвращаются все сообщения и указано имя отправителя
+    """
     email = f"user_{uuid4().hex[:8]}@example.com"
-    password = "123456"
+    password = "Password1"
     user_name = "Историк"
     await register_user(client, user_name, email, password)
     token = await login_user(client, email, password)

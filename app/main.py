@@ -9,12 +9,20 @@ from ws_endpoints import ws_router
 
 
 async def create_tables():
+    """
+    Создаёт все таблицы в базе данных на основе моделей.
+    Используется при старте приложения для инициализации схемы
+    """
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """
+    Контекст жизненного цикла приложения.
+    При старте вызывает создание таблиц, затем запускает приложение
+    """
     await create_tables()
     yield
 
