@@ -1,14 +1,15 @@
-from typing import List, Any
+from typing import Any
 
-from auth import authenticate_user, create_access_token, get_current_user, get_password_hash
+from auth import (authenticate_user, create_access_token, get_current_user,
+                  get_password_hash)
 from database import get_db_session
-from fastapi import APIRouter, Depends, Form, HTTPException, Path, Query, status
+from fastapi import (APIRouter, Depends, Form, HTTPException, Path, Query,
+                     status)
 from fastapi.security import OAuth2PasswordRequestForm
 from models import Chat, Group, Message, User, group_members
 from schemas import ChatCreate, MessageWithSender, Token, UserRead
-from sqlalchemy import and_
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 
 router = APIRouter()
 
@@ -94,7 +95,7 @@ async def get_user_chats_query(
         select(Chat)
         .select_from(Chat)
         .join(group_members, group_members.c.group_id == Chat.id, isouter=True)
-        .where((Chat.type == "private") | (group_members.c.user_id == current_user.id))
+        .where((Chat.type == "personal") | (group_members.c.user_id == current_user.id))
     )
 
     result = await db.execute(stmt)
@@ -134,7 +135,7 @@ async def get_history_query(
     limit: int = Query(default=50, ge=1),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db_session),
-) -> List[MessageWithSender]:
+) -> list[MessageWithSender]:
     """
     Возвращает сообщения из чата с учётом limit/offset либо поднимает 404, если чата нет.
     """

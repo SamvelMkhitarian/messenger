@@ -1,5 +1,5 @@
-from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
 from settings import DATABASE_URL
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine

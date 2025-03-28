@@ -1,18 +1,17 @@
 import json
-from typing import Dict, List
+from typing import Dict
 
 from auth import get_current_user_ws
 from database import get_db_session
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from models import Message, User
 from schemas import MessageWithSender
-from sqlalchemy import join
+from sqlalchemy import join, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 
 ws_router = APIRouter()
 
-active_connections: Dict[int, List[WebSocket]] = {}
+active_connections: Dict[int, list[WebSocket]] = {}
 
 
 @ws_router.websocket("/ws/chat/{chat_id}")

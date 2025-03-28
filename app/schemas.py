@@ -1,7 +1,13 @@
 from datetime import datetime
+from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr
+
+
+class ChatType(str, Enum):
+    personal = "personal"
+    group = "group"
 
 
 class UserCreate(BaseModel):
@@ -26,7 +32,7 @@ class ChatCreate(BaseModel):
     """Данные для создания чата (личного или группового)."""
 
     name: str
-    type: str  # personal / group
+    type: ChatType
 
 
 class ChatRead(BaseModel):

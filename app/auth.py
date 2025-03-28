@@ -9,8 +9,8 @@ from jose import JWTError, jwt
 from models import User
 from schemas import TokenData
 from settings import ALGORITHM, SECRET_KEY
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 
 ACCESS_TOKEN_EXPIRE_MINUTES = 120
 oauth2_scheme = HTTPBearer()
@@ -37,7 +37,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
 
 
-async def authenticate_user(email: str, password: str, db: AsyncSession) -> User | None:
+async def authenticate_user(email: str, password: str, db: AsyncSession) -> Optional[User]:
     """
     Проверяет существование пользователя и валидность пароля
 
@@ -53,7 +53,7 @@ async def authenticate_user(email: str, password: str, db: AsyncSession) -> User
     return None
 
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     """
     Создаёт JWT access токен с указанием срока действия
 
@@ -105,7 +105,7 @@ async def get_current_user(
     return user
 
 
-async def get_current_user_ws(token: str, db: AsyncSession) -> User | None:
+async def get_current_user_ws(token: str, db: AsyncSession) -> Optional[User]:
     """
     Получает текущего пользователя по JWT токену из WebSocket-соединения
 

@@ -75,12 +75,12 @@ async def test_create_chat_success(client: AsyncClient):
     response = await client.post(
         "/create_chats",
         headers={"Authorization": f"Bearer {token}"},
-        json={"name": "Test Chat", "type": "private"},
+        json={"name": "Test Chat", "type": "personal"},
     )
     assert response.status_code == 200
     data = response.json()
     assert data["name"] == "Test Chat"
-    assert data["type"] == "private"
+    assert data["type"] == "personal"
     assert "chat_id" in data
 
 
@@ -100,7 +100,7 @@ async def test_get_user_chats_success(client: AsyncClient):
     await client.post(
         "/create_chats",
         headers={"Authorization": f"Bearer {token}"},
-        json={"name": "Chat 1", "type": "private"},
+        json={"name": "Chat 1", "type": "personal"},
     )
     # Получаем список
     response = await client.get("/get_chats", headers={"Authorization": f"Bearer {token}"})
@@ -238,7 +238,7 @@ async def test_chat_history_success(client: AsyncClient):
 
     # Создаём чат
     chat_resp = await client.post(
-        "/create_chats", headers=headers, json={"name": "История", "type": "private"}
+        "/create_chats", headers=headers, json={"name": "История", "type": "personal"}
     )
     assert chat_resp.status_code == 200
     chat_id = chat_resp.json()["chat_id"]
