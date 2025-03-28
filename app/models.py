@@ -75,3 +75,10 @@ class Message(Base):
 
     chat: Mapped["Chat"] = relationship()
     sender: Mapped["User"] = relationship(back_populates="sent_messages")
+
+
+class MessageRead(Base):
+    __tablename__ = "message_reads"
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    message_id: Mapped[int] = mapped_column(ForeignKey("messages.id"), primary_key=True)
+    read_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)

@@ -40,6 +40,13 @@
     #controls, #chatControls {
       display: none;
     }
+
+    .status {
+      float: right;
+      color: gray;
+      font-size: 0.9em;
+      margin-left: 5px;
+    }
   </style>
 </head>
 <body>
@@ -64,6 +71,41 @@
 
   <script>
     let socket;
+    let myUserId = null;
+    let sentMessages = {};
+
+    function parseJwt(token) {
+      try {
+        return JSON.parse(atob(token.split('.')[1]));
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function renderMessage(msg) {
+      const chat = document.getElementById("chat");
+      const div = document.createElement("div");
+      div.dataset.id = msg.id;
+      div.innerText = `[${msg.sender_name || '???'}]: ${msg.text}`;
+
+      if (msg.sender_id === myUserId) {
+        const mark = document.createElement("span");
+        mark.className = "status";
+        mark.innerText = " ✓";
+        div.appendChild(mark);
+        sentMessages[msg.id] = mark;
+      }
+
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+
+      if (msg.sender_id !== myUserId) {
+        socket.send(JSON.stringify({
+          type: "message_read",
+          message_id: msg.id
+        }));
+      }
+    }
 
     document.getElementById("loginBtn").onclick = async () => {
       const email = document.getElementById("email").value;
@@ -95,26 +137,39 @@
       const token = localStorage.getItem("access_token");
       if (!chatId || !token) return;
 
+      const decoded = parseJwt(token);
+      if (decoded) {
+        myUserId = Number(decoded.sub);
+      }
+
       socket = new WebSocket(`ws://localhost:8000/ws/chat/${chatId}?token=${token}`);
 
       socket.onopen = () => {
         document.getElementById('chatControls').style.display = 'block';
-        console.log('Connected to chat:', chatId);
+        console.log('✅ Подключено к чату:', chatId);
       };
 
       socket.onmessage = (event) => {
+        console.log('📩 Получено сообщение:', event.data);
+
         const chat = document.getElementById('chat');
-        let messages = JSON.parse(event.data);
-        if (Array.isArray(messages)) {
-          messages.forEach(msg => {
-            const newMsg = document.createElement('div');
-            newMsg.textContent = `[${msg.sender_name}]: ${msg.text}`;
-            chat.appendChild(newMsg);
-          });
+        const data = JSON.parse(event.data);
+
+        if (Array.isArray(data)) {
+          data.forEach(renderMessage);
+        } else if (data.type === "message_read") {
+          console.log("👁️ Прочитано:", data);
+          const mark = sentMessages[data.message_id];
+          if (mark) {
+            mark.innerText = " ✓✓";
+            console.log("✅ Галочка обновлена!");
+          } else {
+            console.log("❌ Не нашли сообщение с ID", data.message_id);
+          }
+        } else if (data.type === "new_message") {
+          renderMessage(data.message);
         } else {
-          const newMsg = document.createElement('div');
-          newMsg.textContent = `[${messages.sender_name}]: ${messages.text}`;
-          chat.appendChild(newMsg);
+          renderMessage(data);
         }
       };
 
@@ -122,6 +177,7 @@
         const input = document.getElementById('message');
         if (input.value.trim() !== '') {
           socket.send(JSON.stringify({
+            type: "new_message",
             text: input.value,
             client_id: Math.random().toString(36).substring(2, 10)
           }));

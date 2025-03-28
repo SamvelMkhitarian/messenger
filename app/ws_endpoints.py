@@ -4,31 +4,18 @@ from typing import Dict
 from auth import get_current_user_ws
 from database import get_db_session
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from models import Message, User
+from models import Message, MessageRead, User
 from schemas import MessageWithSender
 from sqlalchemy import join, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 ws_router = APIRouter()
-
-active_connections: Dict[int, list[WebSocket]] = {}
+active_connections: Dict[int, set[WebSocket]] = {}
 
 
 @ws_router.websocket("/ws/chat/{chat_id}")
 async def websocket_endpoint(websocket: WebSocket, chat_id: int, token: str) -> None:
-    """
-    WebSocket-обработчик для чата по chat_id
-
-    - Аутентифицирует пользователя по JWT токену
-    - При подключении отправляет 50 последних сообщений в чате
-    - Принимает новые сообщения от клиента и рассылает их всем участникам
-    - Предотвращает повторную отправку сообщений по client_id
-    - Поддерживает сохранение сообщений в базу и обновление отправителю
-
-    :param websocket: WebSocket-соединение от клиента
-    :param chat_id: ID чата
-    :param token: JWT токен пользователя, переданный как query-параметр
-    """
     db_gen = get_db_session()
     db: AsyncSession = await anext(db_gen)
     try:
@@ -40,7 +27,6 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, token: str) -> 
         await websocket.accept()
         active_connections.setdefault(chat_id, set()).add(websocket)
 
-        # Получение последних сообщений с именем отправителя (без MessageView)
         result = await db.execute(
             select(
                 Message.id,
@@ -70,44 +56,65 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, token: str) -> 
         ]
         await websocket.send_text(json.dumps([msg.model_dump() for msg in messages], default=str))
 
-        # Получение новых сообщений
         while True:
             data = await websocket.receive_json()
-            text = data.get("text")
-            client_id = data.get("client_id")
+            event_type = data.get("type")
 
-            if not text or not client_id:
-                continue
+            if event_type == "message_read":
+                message_id = data.get("message_id")
+                if message_id:
+                    stmt = (
+                        insert(MessageRead)
+                        .values(user_id=user.id, message_id=message_id)
+                        .on_conflict_do_nothing()
+                    )
+                    await db.execute(stmt)
+                    await db.commit()
 
-            # Предотвращение дублирования
-            existing = await db.execute(select(Message).where(Message.client_id == client_id))
-            if existing.scalar_one_or_none():
-                continue
+                    for conn in active_connections.get(chat_id, set()):
+                        await conn.send_text(
+                            json.dumps({
+                                "type": "message_read",
+                                "message_id": message_id,
+                                "reader_id": user.id,
+                            })
+                        )
 
-            new_msg = Message(
-                chat_id=chat_id,
-                sender_id=user.id,
-                text=text,
-                client_id=client_id,
-            )
-            db.add(new_msg)
-            await db.commit()
-            await db.refresh(new_msg)
+            elif event_type == "new_message":
+                text = data.get("text")
+                client_id = data.get("client_id")
+                if not text or not client_id:
+                    continue
 
-            # Добавляем sender_name вручную
-            response_data = MessageWithSender(
-                id=new_msg.id,
-                chat_id=new_msg.chat_id,
-                sender_id=new_msg.sender_id,
-                sender_name=user.name,
-                text=new_msg.text,
-                timestamp=new_msg.timestamp,
-                is_read=new_msg.is_read,
-            ).model_dump()
+                existing = await db.execute(select(Message).where(Message.client_id == client_id))
+                if existing.scalar_one_or_none():
+                    continue
 
-            # Рассылка всем участникам
-            for conn in active_connections.get(chat_id, set()):
-                await conn.send_text(json.dumps(response_data, default=str))
+                new_msg = Message(
+                    chat_id=chat_id,
+                    sender_id=user.id,
+                    text=text,
+                    client_id=client_id,
+                )
+                db.add(new_msg)
+                await db.commit()
+                await db.refresh(new_msg)
+
+                response_data = {
+                    "type": "new_message",
+                    "message": MessageWithSender(
+                        id=new_msg.id,
+                        chat_id=new_msg.chat_id,
+                        sender_id=new_msg.sender_id,
+                        sender_name=user.name,
+                        text=new_msg.text,
+                        timestamp=new_msg.timestamp,
+                        is_read=new_msg.is_read,
+                    ).model_dump(),
+                }
+
+                for conn in active_connections.get(chat_id, set()):
+                    await conn.send_text(json.dumps(response_data, default=str))
 
     except WebSocketDisconnect:
         active_connections.get(chat_id, set()).discard(websocket)
