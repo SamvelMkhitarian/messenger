@@ -1,13 +1,19 @@
-from typing import List
+from typing import List, Any
 
 from auth import get_current_user
 from database import get_db_session
 from fastapi import APIRouter, Depends, Form, Path, Query, status
 from fastapi.security import OAuth2PasswordRequestForm
 from models import User
-from queries import (create_chat_query, create_seed_data_query,
-                     get_history_query, get_user_chats_query, join_group_query,
-                     login_query, register_user_query)
+from queries import (
+    create_chat_query,
+    create_seed_data_query,
+    get_history_query,
+    get_user_chats_query,
+    join_group_query,
+    login_query,
+    register_user_query,
+)
 from schemas import ChatCreate, MessageWithSender, Token, UserRead
 from sqlalchemy.ext.asyncio import AsyncSession
 from utils import validate_password
@@ -20,7 +26,7 @@ async def register_user(
     name: str = Form(...),
     email: str = Form(...),
     password: str = Form(...),
-    db: AsyncSession = Depends(get_db_session)
+    db: AsyncSession = Depends(get_db_session),
 ) -> UserRead:
     """
     Зарегистрировать нового пользователя
@@ -34,7 +40,9 @@ async def register_user(
 
 
 @router.post("/login", response_model=Token, status_code=status.HTTP_200_OK)
-async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db_session)) -> Token:
+async def login(
+    form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db_session)
+) -> Token:
     """
     Авторизовать пользователя и выдать JWT токен
 
@@ -49,8 +57,8 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
 async def create_chat(
     chat_data: ChatCreate,
     db: AsyncSession = Depends(get_db_session),
-    current_user: User = Depends(get_current_user)
-):
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
     """
     Создать новый чат (личный или групповой)
 
@@ -64,9 +72,8 @@ async def create_chat(
 
 @router.get("/get_chats", status_code=status.HTTP_200_OK)
 async def get_user_chats(
-    db: AsyncSession = Depends(get_db_session),
-    current_user: User = Depends(get_current_user)
-):
+    db: AsyncSession = Depends(get_db_session), current_user: User = Depends(get_current_user)
+) -> list[dict[str, Any]]:
     """
     Получить список чатов, в которых участвует текущий пользователь.
 
@@ -81,7 +88,7 @@ async def get_user_chats(
 async def join_group(
     group_id: int,
     db: AsyncSession = Depends(get_db_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     """
     Присоединить пользователя к существующей группе
@@ -94,9 +101,11 @@ async def join_group(
     return await join_group_query(group_id, db, current_user)
 
 
-@router.get("/history/{chat_id}", response_model=List[MessageWithSender], status_code=status.HTTP_200_OK)
+@router.get(
+    "/history/{chat_id}", response_model=List[MessageWithSender], status_code=status.HTTP_200_OK
+)
 async def get_history(
-    chat_id: int = Path(..., description='ID чата'),
+    chat_id: int = Path(..., description="ID чата"),
     limit: int = Query(default=50, ge=1),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db_session),

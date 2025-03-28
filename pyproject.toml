@@ -24,6 +24,7 @@ dependencies = [
     "sqlalchemy>=2.0.39",
     "uvicorn>=0.34.0",
     "websockets>=15.0.1",
+    "ruff>=0.9.9",
 ]
 
 [tool.pytest.ini_options]
@@ -31,3 +32,65 @@ addopts = "--cov=app --cov-report=term-missing"
 pythonpath = ["./app"]
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+target-version = "py311"
+src = ["app"]
+exclude = [".venv", "migrations"]
+line-length = 100
+show-fixes = true
+
+[tool.ruff.format]
+preview = true
+line-ending = "auto"
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+[tool.ruff.lint]
+ignore = ["D", "RUF001", "RUF012", "FIX", "TD002", "TD003"]
+select = ["ALL"]
+unfixable = ["E711", "E712"]
+
+[tool.ruff.lint.per-file-ignores]
+"app/tests/*" = ["S101", "S106", "FBT", "ARG002", "PT004", "ANN201", "PLR2004"]
+"app/tests/helpers/*.py" = ["PLR0913", "ANN401"]
+"app/tests/conftest.py" = ["ARG001"]
+"app/config/*" = ["ANN401"]
+"app/clients/base/schemas.py" = ["ARG002", "ANN003", "A003", "ANN401"]
+"app/clients/base/mock_api.py" = ["UP040"]
+"app/clients/base/client.py" = ["PLR0913"]
+
+[tool.ruff.lint.pylint]
+max-args = 6
+
+[tool.ruff.lint.flake8-builtins]
+builtins-ignorelist = ["id", "type"]
+
+[tool.ruff.lint.pep8-naming]
+classmethod-decorators = ["pydantic.model_validator", "pydantic.field_validator"]
+
+[tool.mypy]
+mypy_path = ["."]
+plugins = ["pydantic.mypy"]
+follow_imports = "silent"
+strict = true
+disallow_subclassing_any = false
+disallow_any_generics = false
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["app.migrations.*"]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = ["app.tests.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+disallow_untyped_decorators = false
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true

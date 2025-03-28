@@ -16,7 +16,7 @@ active_connections: Dict[int, List[WebSocket]] = {}
 
 
 @ws_router.websocket("/ws/chat/{chat_id}")
-async def websocket_endpoint(websocket: WebSocket, chat_id: int, token: str):
+async def websocket_endpoint(websocket: WebSocket, chat_id: int, token: str) -> None:
     """
     WebSocket-обработчик для чата по chat_id
 
@@ -81,9 +81,7 @@ async def websocket_endpoint(websocket: WebSocket, chat_id: int, token: str):
                 continue
 
             # Предотвращение дублирования
-            existing = await db.execute(
-                select(Message).where(Message.client_id == client_id)
-            )
+            existing = await db.execute(select(Message).where(Message.client_id == client_id))
             if existing.scalar_one_or_none():
                 continue
 

@@ -1,10 +1,8 @@
-from typing import List
+from typing import List, Any
 
-from auth import (authenticate_user, create_access_token, get_current_user,
-                  get_password_hash)
+from auth import authenticate_user, create_access_token, get_current_user, get_password_hash
 from database import get_db_session
-from fastapi import (APIRouter, Depends, Form, HTTPException, Path, Query,
-                     status)
+from fastapi import APIRouter, Depends, Form, HTTPException, Path, Query, status
 from fastapi.security import OAuth2PasswordRequestForm
 from models import Chat, Group, Message, User, group_members
 from schemas import ChatCreate, MessageWithSender, Token, UserRead
@@ -19,27 +17,24 @@ async def register_user_query(
     name: str = Form(...),
     email: str = Form(...),
     password: str = Form(...),
-    db: AsyncSession = Depends(get_db_session)
+    db: AsyncSession = Depends(get_db_session),
 ) -> UserRead:
     """
     Регистрирует нового пользователя и возвращает модель UserRead.
     """
     existing_user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
     if existing_user:
-        raise HTTPException(
-            status_code=400, detail='Email уже зарегистрирован')
-    new_user = User(
-        name=name,
-        email=email,
-        password_hash=get_password_hash(password)
-    )
+        raise HTTPException(status_code=400, detail="Email уже зарегистрирован")
+    new_user = User(name=name, email=email, password_hash=get_password_hash(password))
     db.add(new_user)
     await db.commit()
     await db.refresh(new_user)
     return new_user
 
 
-async def login_query(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db_session)) -> Token:
+async def login_query(
+    form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db_session)
+) -> Token:
     """
     Авторизует пользователя и возвращает модель Token.
     """
@@ -59,8 +54,8 @@ async def login_query(form_data: OAuth2PasswordRequestForm = Depends(), db: Asyn
 async def create_chat_query(
     chat_data: ChatCreate,
     db: AsyncSession = Depends(get_db_session),
-    current_user: User = Depends(get_current_user)
-):
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
     """
     Создаёт чат (личный или групповой) и возвращает словарь с chat_id и при необходимости group_id.
     """
@@ -80,7 +75,9 @@ async def create_chat_query(
         db.add(new_group)
         await db.commit()
         await db.refresh(new_group)
-        await db.execute(group_members.insert().values(group_id=new_group.id, user_id=current_user.id))
+        await db.execute(
+            group_members.insert().values(group_id=new_group.id, user_id=current_user.id)
+        )
         await db.commit()
         response["group_id"] = new_group.id
 
@@ -88,20 +85,16 @@ async def create_chat_query(
 
 
 async def get_user_chats_query(
-    db: AsyncSession = Depends(get_db_session),
-    current_user: User = Depends(get_current_user)
-):
+    db: AsyncSession = Depends(get_db_session), current_user: User = Depends(get_current_user)
+) -> list[dict[str, Any]]:
     """
-    Возвращает список чатов, в которых участвует текущий пользователь.    
+    Возвращает список чатов, в которых участвует текущий пользователь.
     """
     stmt = (
         select(Chat)
         .select_from(Chat)
         .join(group_members, group_members.c.group_id == Chat.id, isouter=True)
-        .where(
-            (Chat.type == "private") |
-            (group_members.c.user_id == current_user.id)
-        )
+        .where((Chat.type == "private") | (group_members.c.user_id == current_user.id))
     )
 
     result = await db.execute(stmt)
@@ -113,7 +106,7 @@ async def get_user_chats_query(
 async def join_group_query(
     group_id: int,
     db: AsyncSession = Depends(get_db_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     """
     Добавляет текущего пользователя в указанную группу и возвращает информацию о результате.
@@ -125,8 +118,7 @@ async def join_group_query(
     # Проверим, не в группе ли уже
     res = await db.execute(
         select(group_members).where(
-            and_(group_members.c.group_id == group_id,
-                 group_members.c.user_id == current_user.id)
+            and_(group_members.c.group_id == group_id, group_members.c.user_id == current_user.id)
         )
     )
     if res.first():
@@ -138,7 +130,7 @@ async def join_group_query(
 
 
 async def get_history_query(
-    chat_id: int = Path(..., description='ID чата'),
+    chat_id: int = Path(..., description="ID чата"),
     limit: int = Query(default=50, ge=1),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db_session),
@@ -169,7 +161,7 @@ async def get_history_query(
             sender_name=user_name,
             text=msg.text,
             timestamp=msg.timestamp,
-            is_read=msg.is_read
+            is_read=msg.is_read,
         )
         for msg, user_name in rows
     ]
@@ -179,10 +171,8 @@ async def create_seed_data_query(db: AsyncSession) -> None:
     """
     Создаёт тестовых пользователей и чат, не возвращая данные.
     """
-    u1 = User(name="Alice", email="alice@example.com",
-              password_hash=get_password_hash("password"))
-    u2 = User(name="Bob", email="bob@example.com",
-              password_hash=get_password_hash("password"))
+    u1 = User(name="Alice", email="alice@example.com", password_hash=get_password_hash("password"))
+    u2 = User(name="Bob", email="bob@example.com", password_hash=get_password_hash("password"))
     db.add_all([u1, u2])
     await db.commit()
     await db.refresh(u1)

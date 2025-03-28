@@ -16,7 +16,9 @@ async def test_register_success(client: AsyncClient):
     - Проверяет статус 200 и наличие email и id в ответе
     """
     email = f"test_{uuid4().hex[:8]}@example.com"
-    response = await client.post("/register", data={"name": "Тест", "email": email, "password": "Password1"})
+    response = await client.post(
+        "/register", data={"name": "Тест", "email": email, "password": "Password1"}
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["email"] == email
@@ -32,7 +34,9 @@ async def test_register_duplicate_email(client: AsyncClient):
     """
     email = f"test_{uuid4().hex[:8]}@example.com"
     await register_user(client, "Тест", email, "Password1")
-    response = await client.post("/register", data={"name": "Тест 2", "email": email, "password": "Password1"})
+    response = await client.post(
+        "/register", data={"name": "Тест 2", "email": email, "password": "Password1"}
+    )
     assert response.status_code == 400
     assert response.json()["detail"] == "Email уже зарегистрирован"
 
@@ -71,7 +75,7 @@ async def test_create_chat_success(client: AsyncClient):
     response = await client.post(
         "/create_chats",
         headers={"Authorization": f"Bearer {token}"},
-        json={"name": "Test Chat", "type": "private"}
+        json={"name": "Test Chat", "type": "private"},
     )
     assert response.status_code == 200
     data = response.json()
@@ -96,7 +100,7 @@ async def test_get_user_chats_success(client: AsyncClient):
     await client.post(
         "/create_chats",
         headers={"Authorization": f"Bearer {token}"},
-        json={"name": "Chat 1", "type": "private"}
+        json={"name": "Chat 1", "type": "private"},
     )
     # Получаем список
     response = await client.get("/get_chats", headers={"Authorization": f"Bearer {token}"})
@@ -122,7 +126,7 @@ async def test_create_group_chat_success(client: AsyncClient):
     response = await client.post(
         "/create_chats",
         headers={"Authorization": f"Bearer {token}"},
-        json={"name": "My Group", "type": "group"}
+        json={"name": "My Group", "type": "group"},
     )
     assert response.status_code == 200
     data = response.json()
@@ -150,7 +154,7 @@ async def test_join_group_success(client: AsyncClient):
     group_response = await client.post(
         "/create_chats",
         headers={"Authorization": f"Bearer {creator_token}"},
-        json={"name": "Group Chat", "type": "group"}
+        json={"name": "Group Chat", "type": "group"},
     )
     assert group_response.status_code == 200
     group_id = group_response.json()["group_id"]
@@ -158,10 +162,11 @@ async def test_join_group_success(client: AsyncClient):
     # Присоединяющийся участник
     await register_user(client, "Joiner", joiner_email, password)
     joiner_token = await login_user(client, joiner_email, password)
-    join_response = await client.post(f"/groups/{group_id}/join", headers={"Authorization": f"Bearer {joiner_token}"})
+    join_response = await client.post(
+        f"/groups/{group_id}/join", headers={"Authorization": f"Bearer {joiner_token}"}
+    )
     assert join_response.status_code == 200
-    assert f"присоединился к группе {group_id}" in join_response.json()[
-        "detail"]
+    assert f"присоединился к группе {group_id}" in join_response.json()["detail"]
 
 
 @pytest.mark.asyncio
@@ -179,20 +184,23 @@ async def test_join_group_already_member(client: AsyncClient):
     group_resp = await client.post(
         "/create_chats",
         headers={"Authorization": f"Bearer {token}"},
-        json={"name": "Group", "type": "group"}
+        json={"name": "Group", "type": "group"},
     )
     assert group_resp.status_code == 200
     group_id = group_resp.json()["group_id"]
 
     # Первый раз присоединяемся
-    first_join = await client.post(f"/groups/{group_id}/join", headers={"Authorization": f"Bearer {token}"})
+    first_join = await client.post(
+        f"/groups/{group_id}/join", headers={"Authorization": f"Bearer {token}"}
+    )
     assert first_join.status_code == 200
 
     # Второй раз — Already in group
-    second_join = await client.post(f"/groups/{group_id}/join", headers={"Authorization": f"Bearer {token}"})
+    second_join = await client.post(
+        f"/groups/{group_id}/join", headers={"Authorization": f"Bearer {token}"}
+    )
     assert second_join.status_code == 200
-    assert second_join.json(
-    )["detail"] == "Пользователь уже находится в группе."
+    assert second_join.json()["detail"] == "Пользователь уже находится в группе."
 
 
 @pytest.mark.asyncio
@@ -206,7 +214,9 @@ async def test_join_nonexistent_group(client: AsyncClient):
     password = "Password1"
     await register_user(client, "User", email, password)
     token = await login_user(client, email, password)
-    response = await client.post("/groups/999999/join", headers={"Authorization": f"Bearer {token}"})
+    response = await client.post(
+        "/groups/999999/join", headers={"Authorization": f"Bearer {token}"}
+    )
     assert response.status_code == 404
     assert response.json()["detail"] == "Группа не найдена."
 
@@ -227,7 +237,9 @@ async def test_chat_history_success(client: AsyncClient):
     headers = {"Authorization": f"Bearer {token}"}
 
     # Создаём чат
-    chat_resp = await client.post("/create_chats", headers=headers, json={"name": "История", "type": "private"})
+    chat_resp = await client.post(
+        "/create_chats", headers=headers, json={"name": "История", "type": "private"}
+    )
     assert chat_resp.status_code == 200
     chat_id = chat_resp.json()["chat_id"]
 
@@ -235,8 +247,11 @@ async def test_chat_history_success(client: AsyncClient):
     async for session in get_db_session():
         user = (await session.execute(select(User).where(User.email == email))).scalar_one()
         for i in range(3):
-            session.add(Message(chat_id=chat_id, sender_id=user.id,
-                        text=f"Сообщение {i+1}", is_read=False))
+            session.add(
+                Message(
+                    chat_id=chat_id, sender_id=user.id, text=f"Сообщение {i + 1}", is_read=False
+                )
+            )
         await session.commit()
         break
 

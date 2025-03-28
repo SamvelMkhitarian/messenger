@@ -23,7 +23,7 @@ def get_password_hash(password: str) -> str:
     :param password: исходный пароль в виде строки
     :return: захешированный пароль в виде строки
     """
-    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -34,10 +34,10 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     :param hashed_password: сохранённый хеш пароля
     :return: True, если пароль совпадает, иначе False
     """
-    return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+    return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
 
 
-async def authenticate_user(email: str, password: str, db: AsyncSession):
+async def authenticate_user(email: str, password: str, db: AsyncSession) -> User | None:
     """
     Проверяет существование пользователя и валидность пароля
 
@@ -53,7 +53,7 @@ async def authenticate_user(email: str, password: str, db: AsyncSession):
     return None
 
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """
     Создаёт JWT access токен с указанием срока действия
 
@@ -65,8 +65,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + \
-            timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
@@ -74,8 +73,8 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(oauth2_scheme),
-    db: AsyncSession = Depends(get_db_session)
-):
+    db: AsyncSession = Depends(get_db_session),
+) -> User:
     """
     Получить текущего авторизованного пользователя по JWT токену
 
@@ -106,7 +105,7 @@ async def get_current_user(
     return user
 
 
-async def get_current_user_ws(token: str, db: AsyncSession) -> Optional[User]:
+async def get_current_user_ws(token: str, db: AsyncSession) -> User | None:
     """
     Получает текущего пользователя по JWT токену из WebSocket-соединения
 

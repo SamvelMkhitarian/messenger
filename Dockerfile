@@ -11,10 +11,11 @@ ENV PYTHONPATH=/app
 COPY pyproject.toml uv.lock ./
 
 RUN uv venv --python=python3.11 \
- && uv pip install --upgrade pip \
- && uv sync
+&& uv pip install --upgrade pip \
+&& uv sync
 
 COPY . .
+COPY static ./static
 
 EXPOSE 8000
 
